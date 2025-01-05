@@ -29,7 +29,8 @@ def main(args):
     
     
         # Save model
-        torch.save(lbc.bev_model.state_dict(), os.path.join(logger.log_dir, 'bev_model_{}.th'.format(epoch+1)))
+        #torch.save(lbc.bev_model.state_dict(), os.path.join(logger.log_dir, 'bev_model_{}.th'.format(epoch+1)))
+        torch.save(lbc.bev_model.state_dict(), os.path.join(args.save_path, 'bev_model_{}.th'.format(epoch+1)))
 
 
 if __name__ == '__main__':
@@ -37,14 +38,15 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--project', default='carla_lbc')
-    parser.add_argument('--config-path', default='experiments/config_nocrash_lbc.yaml')
+    parser.add_argument('--project', default='carla_lbc_bev')
+    parser.add_argument('--config-path', default='expirements/config/config_lbc.yaml')
     parser.add_argument('--device', choices=['cpu', 'cuda'], default='cuda')
+    parser.add_argument('--save_path', default="./expirements/models/bev_model/n10e30")
 
     # Training data config
     parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--lr', type=float, default=3e-4)
-    parser.add_argument('--num-epochs', type=int, default=20)
+    parser.add_argument('--num-epochs', type=int, default=30)
 
     # Logging config
     parser.add_argument('--num-iters-per-log', type=int, default=100)

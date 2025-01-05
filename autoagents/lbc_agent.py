@@ -42,7 +42,7 @@ class LBCAgent(AutonomousAgent):
             
         for key, value in config.items():
             setattr(self, key, value)
-            
+        os.environ["CUDA_VISIBLE_DEVICES"] = '0'    
         self.device = torch.device('cuda')
         
         self.rgb_model = RGBPointModel(

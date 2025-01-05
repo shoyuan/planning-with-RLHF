@@ -7,7 +7,7 @@ def main(args):
 
     #scenario = 'assets/all_towns_traffic_scenarios.json'
     scenario = 'assets/no_scenarios.json'
-    route = 'assets/routes_50.xml'
+    route = 'assets/routes_all.xml'
     # route = 'assets/routes_training/route_10.xml'
 
     args.agent = 'autoagents/collector_agents/q_collector' # Use 'viz_collector' for collecting pretty images
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--num-runners', type=int, default=1)
-    parser.add_argument('--scenario', choices=['train_scenario', 'nocrash_train_scenario'], default='train_scenario')
+    parser.add_argument('--scenario', choices=['train_scenario', 'nocrash_train_scenario'], default='nocrash_train_scenario')
     parser.add_argument('--host', default='localhost',
                         help='IP of the host server (default: localhost)')
     parser.add_argument('--port', type=int, default=2000)
@@ -57,9 +57,9 @@ if __name__ == '__main__':
                         default=1,
                         help='Number of repetitions per route.')
     parser.add_argument("--track", type=str, default='MAP', help="Participation track: SENSORS, MAP")
-    parser.add_argument('--resume', type=bool, default=False, help='Resume execution from last checkpoint?')
+    parser.add_argument('--resume', type=bool, default=True, help='Resume execution from last checkpoint?')
     parser.add_argument("--checkpoint", type=str,
-                        default='phase1_simulation_results.json',
+                        default='nc1_phase1_simulation_results.json',
                         help="Path to checkpoint used for saving statistics and resuming")
     
     args = parser.parse_args()

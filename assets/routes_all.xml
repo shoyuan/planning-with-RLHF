@@ -5,7 +5,7 @@
          cloudiness="0"
          precipitation="0"
          precipitation_deposits="0"
-         wind_intensity="0"
+         wind_intensity="0"  
          sun_azimuth_angle="0"
          sun_altitude_angle="70"
          fog_density="0"

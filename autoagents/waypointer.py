@@ -41,7 +41,7 @@ class Waypointer:
         lat, lon, _ = gnss
         x, y = self.latlon_to_xy(lat, lon)
 
-        for i, (wx, wy, cmd) in enumerate(self.global_plan):
+        for i, (wx, wy, cmd) in enumerate(self.global_plan):#找到当前位置与路线计划中下一个需要经过的点之间的距离,并更新检查点
 
             # CMD remap... HACK...
             distance = np.linalg.norm([x-wx, y-wy])

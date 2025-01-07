@@ -36,8 +36,8 @@ class PointModel(nn.Module):
         )
         
     def forward(self, bev, spd):
-        bev = (bev>0).float()
-        inputs = self.backbone(bev/255.)
+        bev = (bev>0).float()#二值化
+        inputs = self.backbone(bev/255.)#二值化bev图进行归一化,输入backbone
         spd_embds = self.spd_encoder(spd[:,None])[...,None,None].repeat(1,1,self.kh,self.kw)
         outputs = self.upconv(torch.cat([inputs, spd_embds], 1))
         

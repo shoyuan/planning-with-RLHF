@@ -45,11 +45,11 @@ class LBC:
     def train(self, rgbs, lbls, sems, locs, spds, cmds, train='image'):
         
         rgbs = rgbs.permute(0,3,1,2).float().to(self.device)
-        lbls = lbls.permute(0,3,1,2).float().to(self.device)
-        sems = sems.long().to(self.device)
+        lbls = lbls.permute(0,3,1,2).float().to(self.device)#bev图像数据
+        sems = sems.long().to(self.device)#语义分隔标签
         locs = locs.float().to(self.device)
         spds = spds.float().to(self.device)
-        cmds = cmds.long().to(self.device)
+        cmds = cmds.long().to(self.device)#指令数据
         
         if train == 'bev':
             return self.train_bev(lbls, spds, locs, cmds)
@@ -62,7 +62,7 @@ class LBC:
             
     def train_bev(self, lbls, spds, locs, cmds):
         
-        pred_locs = self.bev_model(lbls, spds).view(-1,self.num_cmds,self.T,2)
+        pred_locs = self.bev_model(lbls, spds).view(-1,self.num_cmds,self.T,2)#模型输出:bev图像的预测坐标(归一化坐标)
 
         # Scale pred locs
         pred_locs = (pred_locs+1) * self.crop_size/2
@@ -85,11 +85,11 @@ class LBC:
         with torch.no_grad():
             tgt_bev_locs = (self.bev_model(lbls, spds).view(-1,self.num_cmds,self.T,2)+1) * self.crop_size/2
         
-        pred_rgb_locs, pred_sems = self.rgb_model(rgbs, spds)
+        pred_rgb_locs, pred_sems = self.rgb_model(rgbs, spds)#模型输出:rgb图像的预测坐标(归一化坐标)和预测语义分割图
         pred_rgb_locs = (pred_rgb_locs.view(-1,self.num_cmds,self.T,2)+1) * self.rgb_model.img_size/2
     
         tgt_rgb_locs = self.bev_to_cam(tgt_bev_locs)
-        pred_bev_locs = self.cam_to_bev(pred_rgb_locs)
+        pred_bev_locs = self.cam_to_bev(pred_rgb_locs)#转成bev坐标系下的坐标
         
         act_loss = F.l1_loss(pred_bev_locs, tgt_bev_locs, reduction='none').mean(dim=[2,3])
         

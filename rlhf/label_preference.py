@@ -10,25 +10,26 @@ def draw_path_points(img, points, color=(0, 255, 0), thickness=2):
     """Draw path points on image"""
     h, w = img.shape[:2]
     
-    # Convert points from BEV (Bird's Eye View) to image coordinates
+    
     for i in range(len(points)-1):
         # Scale and center the points
         x1, y1 = points[i]
         x2, y2 = points[i+1]
         
         # Convert to pixel coordinates (similar to logger.py)
-        pt1 = (int(x1 + w//2), int(h - y1))  # Center x, invert y
-        pt2 = (int(x2 + w//2), int(h - y2))  # Center x, invert y
-        
+        # pt1 = (int(x1 + w//2), int(h - y1))  # Center x, invert y
+        # pt2 = (int(x2 + w//2), int(h - y2))  # Center x, invert y
+        pt1 = (int(x1), int(y1))
+        pt2 = (int(x2), int(y2))
+
         cv2.line(img, pt1, pt2, color, thickness)
         cv2.circle(img, pt1, 3, color, -1)
     
     # Draw the last point
     if len(points) > 0:
         x, y = points[-1]
-        last_point = (int(x + w//2), int(h - y))
+        last_point = (int(x), int(y))
         cv2.circle(img, last_point, 3, color, -1)
-
 def visualize_frame(rgb, pred_loc, control, speed, cmd, position, rotation, preference=None):
     """可视化单帧数据"""
     # 解码图像
@@ -180,6 +181,7 @@ class PreferenceLabeler:
         with self.env.begin() as txn:
             rgb = txn.get(f'rgb_{idx:05d}'.encode())
             pred_loc = np.frombuffer(txn.get(f'pred_loc_{idx:05d}'.encode()), np.float32).reshape(-1, 2)
+            
             world_loc = np.frombuffer(txn.get(f'world_loc_{idx:05d}'.encode()), np.float32).reshape(-1, 2)
             control = np.frombuffer(txn.get(f'control_{idx:05d}'.encode()), np.float32)
             speed = np.frombuffer(txn.get(f'speed_{idx:05d}'.encode()), np.float32)
@@ -187,6 +189,9 @@ class PreferenceLabeler:
             position = np.frombuffer(txn.get(f'position_{idx:05d}'.encode()), np.float32)
             rotation = np.frombuffer(txn.get(f'rotation_{idx:05d}'.encode()), np.float32)
             
+            print("pred_loc:  ", pred_loc)
+            print("position: ", position)
+            print("world_loc: ", world_loc)
             # 尝试加载偏好值
             pref = txn.get(f'preference_{idx:05d}'.encode())
             preference = float(pref.decode()) if pref else None

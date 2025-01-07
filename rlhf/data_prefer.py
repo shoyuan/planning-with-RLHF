@@ -33,11 +33,11 @@ def main(args):
     routes = load_routes_info('assets/routes_50.xml')
     
     # 使用无场景配置
-    scenario = 'assets/all_towns_traffic_scenarios.json'
+    scenario = 'assets/no_scenarios.json'
     route = 'assets/routes_50.xml'
 
     # 使用新的collector agent
-    args.agent = 'autoagents/collector_agents/lbc_collector'
+    args.agent = 'autoagents/collector_agents/lbc_collector_demo'
     args.agent_config = 'expirements/config/config_prefer.yaml'
 
     jobs = []
@@ -74,7 +74,7 @@ if __name__ == '__main__':
                         help='CARLA 服务器端口')
     parser.add_argument('--timeout', default="600.0",
                         help='CARLA 客户端超时时间(秒)')
-    parser.add_argument('--debug', type=bool, default=True,
+    parser.add_argument('--debug', type=bool, default=False,
                         help='是否启用调试模式')
     parser.add_argument('--repetitions', type=int, default=1,
                         help='每条路线重复次数')
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     parser.add_argument('--resume', type=bool, default=True,
                         help='是否从检查点恢复')
     parser.add_argument('--checkpoint', type=str,
-                        default='prefer_simulation_results.json',
+                        default='prefer1_simulation_results.json',
                         help='检查点文件名，用于保存和恢复模拟状态')
     parser.add_argument('--model-epoch', type=int, required=True,
                        help='LBC model checkpoint epoch number')

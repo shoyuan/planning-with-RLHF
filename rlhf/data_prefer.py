@@ -37,7 +37,7 @@ def main(args):
     route = 'assets/routes_50.xml'
 
     # 使用新的collector agent
-    args.agent = 'autoagents/collector_agents/lbc_collector_demo'
+    args.agent = 'autoagents/collector_agents/lbc_collector'
     args.agent_config = 'expirements/config/config_prefer.yaml'
 
     jobs = []

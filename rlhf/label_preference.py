@@ -2,13 +2,16 @@ import os
 import cv2
 import lmdb
 import numpy as np
+import torch
 import argparse
+from lbc.lbc import LBC
 from pathlib import Path
+from utils.visualization import visualize_birdview
 
 
 def draw_path_points(img, points, color=(0, 255, 0), thickness=2):
     """Draw path points on image"""
-    h, w = img.shape[:2]
+    # h, w = img.shape[:2]
     
     
     for i in range(len(points)-1):
@@ -30,7 +33,7 @@ def draw_path_points(img, points, color=(0, 255, 0), thickness=2):
         x, y = points[-1]
         last_point = (int(x), int(y))
         cv2.circle(img, last_point, 3, color, -1)
-def visualize_frame(rgb, pred_loc, control, speed, cmd, position, rotation, preference=None):
+def visualize_frame(rgb, pred_loc, map_loc, control, speed, cmd, position, rotation, map_lbls, preference=None):
     """可视化单帧数据"""
     # 解码图像
     vis_img = cv2.imdecode(np.frombuffer(rgb, np.uint8), cv2.IMREAD_COLOR)
@@ -71,7 +74,16 @@ def visualize_frame(rgb, pred_loc, control, speed, cmd, position, rotation, pref
         position = (10, (i + 1) * line_height)
         cv2.putText(vis_img, text, position, font, font_scale, text_color, thickness)
     
-    return vis_img
+    map_visualized = visualize_birdview(map_lbls)
+    print(map_loc)
+    
+    
+    draw_path_points(map_visualized, map_loc, color=(0, 255, 0))
+    
+    # 拼接Map数据和RGB图像
+    #concat_image = np.concatenate((vis_img, map_visualized), axis=1)
+
+    return [vis_img, map_visualized]
 
 def visualize_data(data_path, output_dir=None, start_frame=0, end_frame=None, save_video=False):
     """可视化LMDB数据"""
@@ -122,17 +134,20 @@ def visualize_lmdb_file(lmdb_path, output_dir=None, start_frame=0, end_frame=Non
             try:
                 # 读取其他数据
                 pred_loc = np.frombuffer(txn.get(f'pred_loc_{i:05d}'.encode()), np.float32).reshape(-1, 2)
+                world_loc = np.frombuffer(txn.get(f'world_loc_{i:05d}'.encode()), np.float32).reshape(-1, 2)
+                map_loc = np.frombuffer(txn.get(f'map_loc_{i:05d}'.encode()), np.float32).reshape(-1, 2)
                 control = np.frombuffer(txn.get(f'control_{i:05d}'.encode()), np.float32)
                 speed = np.frombuffer(txn.get(f'speed_{i:05d}'.encode()), np.float32)
                 cmd = np.frombuffer(txn.get(f'cmd_{i:05d}'.encode()), np.float32)
                 position = np.frombuffer(txn.get(f'position_{i:05d}'.encode()), np.float32)
                 rotation = np.frombuffer(txn.get(f'rotation_{i:05d}'.encode()), np.float32)
+                map_lbls = np.frombuffer(txn.get(f'lbl_{i:05d}'.encode()), np.uint8)
             except Exception as e:
                 print(f"错误：读取帧 {i} 数据失败: {e}")
                 continue
             
             # 可视化当前帧
-            vis_img = visualize_frame(encoded_image, pred_loc, control, speed, cmd, position, rotation)
+            vis_img = visualize_frame(encoded_image, pred_loc, map_loc, control, speed, cmd, position, rotation, map_lbls)
             if vis_img is None:
                 print(f"警告：帧 {i} 可视化失败")
                 continue
@@ -183,15 +198,19 @@ class PreferenceLabeler:
             pred_loc = np.frombuffer(txn.get(f'pred_loc_{idx:05d}'.encode()), np.float32).reshape(-1, 2)
             
             world_loc = np.frombuffer(txn.get(f'world_loc_{idx:05d}'.encode()), np.float32).reshape(-1, 2)
+            map_loc = np.frombuffer(txn.get(f'map_loc_{idx:05d}'.encode()), np.float32).reshape(-1, 2)
             control = np.frombuffer(txn.get(f'control_{idx:05d}'.encode()), np.float32)
             speed = np.frombuffer(txn.get(f'speed_{idx:05d}'.encode()), np.float32)
             cmd = np.frombuffer(txn.get(f'cmd_{idx:05d}'.encode()), np.float32)
             position = np.frombuffer(txn.get(f'position_{idx:05d}'.encode()), np.float32)
             rotation = np.frombuffer(txn.get(f'rotation_{idx:05d}'.encode()), np.float32)
+            map_lbls = np.frombuffer(txn.get(f'lbl_{idx:05d}'.encode()), np.uint8)
+            map_lbls = map_lbls.reshape((96, 96, 12))
+            # print(map_lbls)
             
-            print("pred_loc:  ", pred_loc)
-            print("position: ", position)
-            print("world_loc: ", world_loc)
+            # print("pred_loc:  ", pred_loc)
+            # print("position: ", position)
+            # print("world_loc: ", world_loc)
             # 尝试加载偏好值
             pref = txn.get(f'preference_{idx:05d}'.encode())
             preference = float(pref.decode()) if pref else None
@@ -200,12 +219,14 @@ class PreferenceLabeler:
             return {
                 'rgb': rgb,
                 'pred_loc': pred_loc,
+                'map_loc': map_loc,
                 'control': control,
                 'speed': speed,
                 'cmd': cmd,
                 'position': position,
                 'rotation': rotation,
-                'preference': preference
+                'preference': preference,
+                'map_lbls': map_lbls
             }
     
     def save_preference(self, idx, preference):
@@ -222,7 +243,9 @@ class PreferenceLabeler:
         idx = self.current_idx
         while idx < self.length:
             frame_data = self.load_frame(idx)
-            vis_img = visualize_frame(**frame_data)
+            fig = visualize_frame(**frame_data)
+            vis_img = fig[0]
+            map_img = fig[1]
             
             # Show operation hints
             cv2.putText(vis_img, 
@@ -231,6 +254,7 @@ class PreferenceLabeler:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             
             cv2.imshow(window_name, vis_img)
+            cv2.imshow("bev_view", map_img)
             
             while True:
                 key = cv2.waitKey(0) & 0xFF

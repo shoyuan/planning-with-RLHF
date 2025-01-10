@@ -5,11 +5,11 @@ def main(args):
     scenario = 'assets/all_towns_traffic_scenarios.json'
     # scenario = 'assets/no_scenarios.json'
     # route = 'assets/routes_dev.xml'
-    route = 'assets/routes_training/route_10.xml'
+    route = 'assets/routes_all.xml'
 
-    args.agent = 'autoagents/image_agent'
+    args.agent = 'autoagents/lbc_agent'
     # args.agent = 'autoagents/collector_agents/lidar_q_collector'
-    args.agent_config = 'config.yaml'
+    args.agent_config = 'expirements/config/config_lbc.yaml'
     # args.agent_config = 'config_lidar.yaml'
 
     port = args.port
@@ -39,9 +39,9 @@ if __name__ == '__main__':
                         default=1,
                         help='Number of repetitions per route.')
     parser.add_argument("--track", type=str, default='SENSORS', help="Participation track: SENSORS, MAP")
-    parser.add_argument('--resume', type=bool, default=False, help='Resume execution from last checkpoint?')
+    parser.add_argument('--resume', type=bool, default=True, help='Resume execution from last checkpoint?')
     parser.add_argument("--checkpoint", type=str,
-                        default='./simulation_results.json',
+                        default='./rgb30_simulation_results.json',
                         help="Path to checkpoint used for saving statistics and resuming")
 
     args = parser.parse_args()

@@ -1,4 +1,5 @@
 import os
+import cv2
 import lmdb
 import torch
 import numpy as np

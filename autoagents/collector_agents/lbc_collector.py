@@ -8,6 +8,9 @@ import wandb
 import carla
 from collections import deque
 import cv2
+import string
+import random
+
 
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 from utils import visualize_obs, _numpy
@@ -24,7 +27,7 @@ class LBCCollector(AutonomousAgent):
     def setup(self, path_to_conf_file):
         self.track = Track.SENSORS
         self.num_frames = 0
-        
+        self.data_index = 0
         # 首先设置基本属性
         self.num_cmds = 6
         self.dt = 1./20
@@ -55,10 +58,12 @@ class LBCCollector(AutonomousAgent):
         self.converter = Converter(offset=6.0, scale=[1.5, 1.5]).to(self.device)
         
         # 初始化数据存储
+        self.lbls = []
         self.vizs = []
         self.rgbs = []
         self.pred_locs = []
         self.world_locs = []
+        self.map_locs = []
         self.controls = []
         self.speeds = []
         self.cmds = []
@@ -88,6 +93,7 @@ class LBCCollector(AutonomousAgent):
     def sensors(self):
         """配置传感器"""
         return [
+            {'type': 'sensor.map', 'id': 'MAP'},
             {'type': 'sensor.collision', 'id': 'COLLISION'},
             {'type': 'sensor.speedometer', 'id': 'EGO'},
             {'type': 'sensor.other.gnss', 'x': 0., 'y': 0.0, 'z': self.camera_z, 'id': 'GPS'},
@@ -111,6 +117,7 @@ class LBCCollector(AutonomousAgent):
         rgb = rgb[self.crop_top:-self.crop_bottom,:,:3]
         rgb = rgb[...,::-1].copy()  # BGR -> RGB
         
+        _, lbl = input_data.get('MAP')
         _, ego = input_data.get('EGO')
         _, gps = input_data.get('GPS')
         _, col = input_data.get('COLLISION')
@@ -126,6 +133,20 @@ class LBCCollector(AutonomousAgent):
 
         cmd_value = cmd.value-1
         cmd_value = 3 if cmd_value < 0 else cmd_value
+
+        if cmd_value in [4,5]:
+            if self.lane_changed is not None and cmd_value != self.lane_changed:
+                self.lane_change_counter = 0
+
+            self.lane_change_counter += 1
+            self.lane_changed = cmd_value if self.lane_change_counter > {4:200,5:200}.get(cmd_value) else None
+        else:
+            self.lane_change_counter = 0
+            self.lane_changed = None
+            
+        if cmd_value == self.lane_changed:
+            cmd_value = 3
+
         # 模型预测
         _rgb = torch.tensor(rgb[None]).float().permute(0,3,1,2).to(self.device)
         _spd = torch.tensor([spd]).float().to(self.device)
@@ -135,7 +156,10 @@ class LBCCollector(AutonomousAgent):
             pred_locs = (pred_locs + 1) * self.rgb_model.img_size/2
 
             pred_loc = self.converter.cam_to_world(pred_locs[cmd_value])
+            map_loc = self.converter.world_to_map(pred_loc)
             pred_loc = torch.flip(pred_loc, [-1])
+
+            
         
         # 获取控制信号
         
@@ -146,11 +170,14 @@ class LBCCollector(AutonomousAgent):
             self.rgbs.append(rgb)
             self.pred_locs.append(_numpy(pred_locs[cmd_value]))
             self.world_locs.append(_numpy(pred_loc))
+            self.map_locs.append(_numpy(map_loc))
             self.controls.append(np.array([control.steer, control.throttle, control.brake]))
             self.speeds.append(np.array([spd]))
             self.cmds.append(np.array([cmd_value]))
             self.positions.append(ego.get('loc'))
             self.rotations.append(ego.get('rot'))
+            self.lbls.append(lbl)
+            
             
             self.vizs.append(visualize_obs(
                 rgb, yaw/180*math.pi,
@@ -243,7 +270,7 @@ class LBCCollector(AutonomousAgent):
                 'vid': wandb.Video(np.stack(self.vizs).transpose((0,3,1,2)), fps=20, format='mp4')
             })
         
-        data_path = os.path.join(self.main_data_dir, f'{self.num_frames}')
+        data_path = os.path.join(self.main_data_dir, f'prefer_data{self.num_frames}', _random_string(5))
         print(f'Saving to {data_path}')
         
         lmdb_env = lmdb.open(data_path, map_size=int(1e10))
@@ -261,6 +288,9 @@ class LBCCollector(AutonomousAgent):
                         
                 txn.put(f'world_loc_{i:05d}'.encode(),
                         self.world_locs[i].astype(np.float32))
+                
+                txn.put(f'map_loc_{i:05d}'.encode(),
+                        self.map_locs[i].astype(np.float32))
                         
                 txn.put(f'control_{i:05d}'.encode(),
                         self.controls[i].astype(np.float32))
@@ -277,7 +307,10 @@ class LBCCollector(AutonomousAgent):
                         
                 txn.put(f'rotation_{i:05d}'.encode(),
                         np.array(self.rotations[i]).astype(np.float32))
-        
+                
+                txn.put(f'lbl_{i:05d}'.encode(),
+                        np.array(self.lbls[i]).tobytes())
+        self.data_index += 1
         # 清空缓存
         self.vizs.clear()
         self.rgbs.clear()
@@ -290,3 +323,6 @@ class LBCCollector(AutonomousAgent):
         self.rotations.clear()
         
         lmdb_env.close()
+
+def _random_string(length=5):
+    return ''.join(random.choice(string.ascii_lowercase) for i in range(length))

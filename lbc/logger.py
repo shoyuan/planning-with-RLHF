@@ -2,9 +2,12 @@ import cv2
 import ray
 import numpy as np
 import wandb
+import matplotlib
 import matplotlib.pyplot as plt
 from utils.visualization import visualize_birdview, visualize_semantic_processed
 from matplotlib.patches import Circle
+
+matplotlib.use('Agg')
 
 class Logger:
     def __init__(self, config):

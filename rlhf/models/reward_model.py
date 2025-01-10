@@ -3,6 +3,32 @@ from torch import nn
 from common.resnet import resnet34
 from common.normalize import Normalize
 
+
+
+class PathEncoder(nn.Module):
+    def __init__(self, embedding_dim=128, num_heads=4, num_layers=2):
+        super().__init__()
+        self.embedding = nn.Sequential(
+            nn.Linear(2, embedding_dim),  # 假设每个路径点有2个坐标
+            nn.ReLU(True),
+            nn.Linear(embedding_dim, embedding_dim),
+            nn.ReLU(True)
+        )
+        
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        self.pooling = nn.AdaptiveAvgPool1d(1)
+        
+    def forward(self, path_points):
+        # path_points: shape [batch_size, 10, 2]
+        embedded = self.embedding(path_points)  # [batch_size, 10, embedding_dim]
+        embedded = embedded.permute(1, 0, 2)    # [10, batch_size, embedding_dim] 适合Transformer
+        encoded = self.transformer_encoder(embedded)  # [10, batch_size, embedding_dim]
+        encoded = encoded.permute(1, 2, 0)       # [batch_size, embedding_dim, 10]
+        pooled = self.pooling(encoded).squeeze(-1)  # [batch_size, embedding_dim]
+        return pooled
+
 class RewardModel(nn.Module):
     def __init__(self, pretrained=True):
         super().__init__()
@@ -18,11 +44,13 @@ class RewardModel(nn.Module):
             nn.ReLU(True),
             nn.Linear(128, 128),
         )
+
+        self.path_encoder = PathEncoder(embedding_dim=128)
         
         # 特征融合和偏好预测
         self.preference_head = nn.Sequential(
             # 输入: 512 (ResNet) + 128 (速度) = 640 通道
-            nn.Conv2d(640, 256, 1),
+            nn.Conv2d(768, 256, 1),
             nn.BatchNorm2d(256),
             nn.ReLU(True),
             
@@ -37,30 +65,28 @@ class RewardModel(nn.Module):
             nn.Linear(128, 1),  # 输出单个偏好分数 (1-5)
         )
         
-    def forward(self, rgb, spd):
-        """
-        Args:
-            rgb: RGB图像 [B, 3, H, W]
-            spd: 速度 [B]
-        Returns:
-            preference: 预测的偏好分数 [B]
-        """
-        # 图像特征提取
-        rgb = self.normalize(rgb/255.0)
-        visual_features = self.backbone(rgb)  # [B, 512, H/32, W/32]
+    def forward(self, images, speeds, path_points):
+        # 图像特征
+        images = self.normalize(images)
+        image_features = self.backbone(images)  # [batch_size, 512, H, W]
         
-        # 速度编码
-        spd_features = self.spd_encoder(spd[:,None])  # [B, 128]
-        spd_features = spd_features[...,None,None].expand(-1,-1,
-                                                         visual_features.shape[2],
-                                                         visual_features.shape[3])
+        # 速度特征
+        speed_features = self.spd_encoder(speeds.unsqueeze(-1))  # [batch_size, 128]
+        speed_features = speed_features.unsqueeze(-1).unsqueeze(-1)  # [batch_size, 128, 1, 1]
+        speed_features = speed_features.expand(-1, -1, image_features.size(2), image_features.size(3))
         
-        # 特征融合
-        features = torch.cat([visual_features, spd_features], dim=1)
+        # 路径点特征
+        path_features = self.path_encoder(path_points)  # [batch_size, 128]
+        path_features = path_features.unsqueeze(-1).unsqueeze(-1)  # [batch_size, 128, 1, 1]
+        path_features = path_features.expand(-1, -1, image_features.size(2), image_features.size(3))
         
-        # 预测偏好分数
-        preference = self.preference_head(features)
-        return preference.squeeze(1)
+        # 特征拼接
+        concatenated = torch.cat([image_features, speed_features, path_features], dim=1)  # [batch_size, 768, H, W]
+        
+        # 偏好预测
+        preference = self.preference_head(concatenated)  # [batch_size, 1]
+        
+        return preference
     
     def compute_loss(self, pred_preference, target_preference):
         """

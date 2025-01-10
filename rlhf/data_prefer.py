@@ -85,7 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=str,
                         default='prefer1_simulation_results.json',
                         help='检查点文件名，用于保存和恢复模拟状态')
-    parser.add_argument('--model-epoch', type=int, required=True,
+    parser.add_argument('--model-epoch', type=int, required=False,default=30, 
                        help='LBC model checkpoint epoch number')
     parser.add_argument('--trafficManagerSeed', type=int, default=0,
                         help='交通管理器的随机种子')

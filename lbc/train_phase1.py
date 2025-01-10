@@ -41,10 +41,10 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--project', default='carla_lbc')
+    parser.add_argument('--project', default='carla_lbc_rgb')
     parser.add_argument('--config-path', default='expirements/config/config_lbc.yaml')
     parser.add_argument('--device', choices=['cpu', 'cuda'], default='cuda')
-    parser.add_argument('--save_path', default='expirements/models/rgb_model/n10e30')
+    parser.add_argument('--save_path', default='expirements/models/rgb_model/e30')
 
     # Training data config
     parser.add_argument('--batch-size', type=int, default=64)

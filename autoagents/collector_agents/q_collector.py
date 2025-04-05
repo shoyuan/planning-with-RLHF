@@ -103,7 +103,7 @@ class QCollector(AutonomousAgent):
             wandb.log({
                 'vid': wandb.Video(np.stack(self.vizs).transpose((0,3,1,2)), fps=20, format='mp4')
             })
-
+       
         # Save data
         data_path = os.path.join(self.main_data_dir, _random_string())
         print ('Saving to {}'.format(data_path))

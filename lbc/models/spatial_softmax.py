@@ -4,9 +4,10 @@ import torch.nn.functional as F
 from torch import nn
 
 class SpatialSoftmax(nn.Module):
-    def __init__(self, height, width):
+    def __init__(self, height, width, need_prob=False):
         super().__init__()
         
+        self.need_prob = need_prob
         self.height = height
         self.width = width
 
@@ -24,6 +25,7 @@ class SpatialSoftmax(nn.Module):
     def forward(self, feature):
         
         flattened = feature.view(feature.shape[0], feature.shape[1], -1)
+        #（batch_size, output_channel, height*width）
         softmax = F.softmax(flattened, dim=-1)
 
         expected_y = torch.sum(self.pos_y * softmax, dim=-1)
@@ -31,4 +33,7 @@ class SpatialSoftmax(nn.Module):
 
         expected_xy = torch.stack([expected_x, expected_y], dim=2)
 
-        return expected_xy
+        if self.need_prob:
+            return  softmax, self.pos_x, self.pos_y
+        else: 
+            return expected_xy

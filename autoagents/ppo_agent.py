@@ -16,14 +16,16 @@ from utils import visualize_obs, _numpy
 from utils.ls_fit import ls_circle, project_point_to_circle, signed_angle
 
 from lbc.models import RGBPointModel, Converter
+from rlhf.models import PPO
+from rlhf.models import reward_model
 from autoagents.waypointer import Waypointer
 
 def get_entry_point():
-    return 'LBCAgent'
+    return 'PPOAgent'
 
-class LBCAgent(AutonomousAgent):
+class PPOAgent(AutonomousAgent):
     """
-    LBC Image agent
+    RLHF PPO agent
     """
     
     def setup(self, path_to_conf_file):
@@ -49,11 +51,22 @@ class LBCAgent(AutonomousAgent):
             'resnet34',
             pretrained=True,
             height=240-self.crop_top-self.crop_bottom, width=480,#h=224,w=480
-            output_channel=self.num_plan*self.num_cmds#10*6
+            output_channel=self.num_plan*self.num_cmds,#10*6
+            need_prob = True
         ).to(self.device)
         self.rgb_model.load_state_dict(torch.load(self.rgb_model_dir))
-        self.rgb_model.eval()
+        #self.rgb_model.eval()
         
+        self.actor = PPO.Actor(self.rgb_model)
+        self.critic = PPO.Critic(self.rgb_model)
+        self.memory = PPO.ReplayBuffer()
+
+        self.ppo_model = PPO.PPO(self.actor, self.critic, self.device)
+        self.reward_model = reward_model.RewardModel(self.device)
+        self.reward_model.load_state_dict(torch.load(self.reward_model_dir))
+        self.reward_model.to(self.device)
+        self.reward_model.eval()
+
         self.converter = Converter(offset=6.0, scale=[1.5, 1.5]).to(self.device)
         
         self.steer_points = {0: 4, 1: 2, 2: 2, 3: 3, 4: 3, 5: 3}
@@ -93,6 +106,8 @@ class LBCAgent(AutonomousAgent):
 
         del self.waypointer
         del self.rgb_model
+        del self.ppo_model
+        del self.reward_model
         
     def flush_data(self):
 
@@ -100,7 +115,9 @@ class LBCAgent(AutonomousAgent):
             wandb.log({
                 'vid': wandb.Video(np.stack(self.vizs).transpose((0,3,1,2)), fps=20, format='mp4')
             })
-            
+        self.memory.is_terminals.append(1.0)
+        self.ppo_model.update(self.memory)
+        torch.save(self.ppo_model, self.ppo_model_dir)
         self.vizs.clear()
         
     def sensors(self):
@@ -132,6 +149,7 @@ class LBCAgent(AutonomousAgent):
         
         _, ego = input_data.get('EGO')
         _, gps = input_data.get('GPS')
+        _, col = input_data.get('COLLISION')
         
         if self.waypointer is None:
             self.waypointer = Waypointer(self._global_plan, gps)
@@ -159,19 +177,33 @@ class LBCAgent(AutonomousAgent):
         _rgb = torch.tensor(_rgb[None]).float().permute(0,3,1,2).to(self.device)
         _spd = torch.tensor([spd]).float().to(self.device)
         
-        with torch.no_grad():
-            pred_locs = self.rgb_model(_rgb, _spd, pred_seg=False).view(self.num_cmds,self.num_plan,2)
-            pred_locs = (pred_locs + 1) * self.rgb_model.img_size/2
+        # with torch.no_grad():
+        pred_locs, pred_locs_prob = self.ppo_model.select_action(_rgb, _spd, self.memory)
+        pred_locs = pred_locs.view(self.num_cmds, self.num_plan, 2)
+        pred_locs = (pred_locs + 1) * self.rgb_model.img_size/2
             
-            pred_loc = self.converter.cam_to_world(pred_locs[cmd_value])
-            pred_loc = torch.flip(pred_loc, [-1])
+        pred_loc = self.converter.cam_to_world(pred_locs[cmd_value])
+        pred_loc = torch.flip(pred_loc, [-1])
+        #print("pred_loc shape :",pred_loc.shape)
+
+        with torch.no_grad():
+            _spd.unsqueeze_(0)
+            reward = self.reward_model(_rgb, _spd, pred_loc.unsqueeze(0))
+
+        self.memory.rewards.append(reward)
         
-        steer, throt, brake = self.get_control(_numpy(pred_loc), cmd_value, float(spd))
+        steer, throt, brake = self.get_control(_numpy(pred_loc.squeeze(0)), cmd_value, float(spd))
     
         self.vizs.append(visualize_obs(rgb, 0, (steer, throt, brake), spd, cmd=cmd_value+1))
-        
+
+        if col:
+            self.flush_data()
+            raise Exception('Collector has collided!')
+
         if len(self.vizs) > 1000:
             self.flush_data()
+        else:
+            self.memory.is_terminals.append(0.0)
         
         self.num_frames += 1
 

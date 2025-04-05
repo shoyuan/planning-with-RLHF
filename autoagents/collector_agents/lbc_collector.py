@@ -270,7 +270,7 @@ class LBCCollector(AutonomousAgent):
                 'vid': wandb.Video(np.stack(self.vizs).transpose((0,3,1,2)), fps=20, format='mp4')
             })
         
-        data_path = os.path.join(self.main_data_dir, f'prefer_data{self.num_frames}', _random_string(5))
+        data_path = os.path.join(self.main_data_dir, f'prefer_data{self.num_frames}_{_random_string()}' )
         print(f'Saving to {data_path}')
         
         lmdb_env = lmdb.open(data_path, map_size=int(1e10))

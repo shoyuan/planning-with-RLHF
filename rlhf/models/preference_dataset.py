@@ -16,26 +16,24 @@ class PreferenceDataset(Dataset):
         data_root = Path(data_root)
         
         # 遍历所有数据目录
-        for episode_dir in sorted(data_root.iterdir()):
-            if not episode_dir.is_dir():
+        for data_dir in sorted(data_root.iterdir()):
+            if not data_dir.is_dir():
+                print(f"Warning1: {data_dir} is not a directory")
                 continue
                 
-            # 遍历每个episode下的数据文件
-            for data_dir in sorted(episode_dir.iterdir()):
-                if not data_dir.is_dir():
-                    continue
+            # 检查是否有preference标注
+            env = lmdb.open(str(data_dir), readonly=True, lock=False)
+            with env.begin() as txn:
+                length = int(txn.get('len'.encode()).decode())
+                print(length)
                     
-                # 检查是否有preference标注
-                env = lmdb.open(str(data_dir), readonly=True, lock=False)
-                with env.begin() as txn:
-                    length = int(txn.get('len'.encode()).decode())
-                    
-                    # 检查每一帧是否有preference标注
-                    for i in range(length):
-                        pref = txn.get(f'preference_{i:05d}'.encode())
-                        if pref is not None:
-                            self.samples.append((str(data_dir), i))
-                env.close()
+                # 检查每一帧是否有preference标注
+                for i in range(length):
+                    pref = txn.get(f'preference_{i:05d}'.encode())
+                    if pref is not None:
+                        self.samples.append((str(data_dir), i))
+            
+            env.close()
         
         print(f"Found {len(self.samples)} labeled samples")
     
@@ -55,6 +53,7 @@ class PreferenceDataset(Dataset):
             rgb = np.transpose(rgb, (2, 0, 1))  # HWC -> CHW
             
             speed = np.frombuffer(txn.get(f'speed_{frame_idx:05d}'.encode()), np.float32)
+            path_points = np.frombuffer(txn.get(f'world_loc_{frame_idx:05d}'.encode()), np.float32).reshape(-1, 2)
             preference = float(txn.get(f'preference_{frame_idx:05d}'.encode()).decode())
             
         env.close()
@@ -62,6 +61,7 @@ class PreferenceDataset(Dataset):
         return {
             'rgb': torch.FloatTensor(rgb),
             'speed': torch.FloatTensor(speed),
+            'path_points': torch.FloatTensor(path_points),
             'preference': torch.FloatTensor([preference])
         }
 

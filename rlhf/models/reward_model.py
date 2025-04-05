@@ -1,7 +1,13 @@
 import torch
 from torch import nn
+from tqdm import tqdm
+from tqdm import trange
+import common
 from common.resnet import resnet34
 from common.normalize import Normalize
+from torch.utils.data import DataLoader
+
+from .preference_dataset import PreferenceDataset, create_dataloader
 
 
 
@@ -33,6 +39,7 @@ class RewardModel(nn.Module):
     def __init__(self, pretrained=True):
         super().__init__()
         
+
         # 图像特征提取器 (与LBC相同)
         self.backbone = resnet34(pretrained=pretrained, num_channels=3)
         self.normalize = Normalize(mean=[0.485, 0.456, 0.406], 
@@ -69,10 +76,12 @@ class RewardModel(nn.Module):
         # 图像特征
         images = self.normalize(images)
         image_features = self.backbone(images)  # [batch_size, 512, H, W]
+        #print(image_features.shape)
         
         # 速度特征
-        speed_features = self.spd_encoder(speeds.unsqueeze(-1))  # [batch_size, 128]
+        speed_features = self.spd_encoder(speeds)  # [batch_size, 128]
         speed_features = speed_features.unsqueeze(-1).unsqueeze(-1)  # [batch_size, 128, 1, 1]
+        #print(speed_features.shape)
         speed_features = speed_features.expand(-1, -1, image_features.size(2), image_features.size(3))
         
         # 路径点特征
@@ -106,12 +115,14 @@ def train_reward_model(model, train_loader, val_loader,
         # 训练
         model.train()
         train_loss = 0
-        for batch in train_loader:
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}', total=len(train_loader))
+        for batch in pbar:
             rgb = batch['rgb'].to(device)
             spd = batch['speed'].to(device)
+            path_points = batch['path_points'].to(device)
             preference = batch['preference'].float().to(device)
             
-            pred = model(rgb, spd)
+            pred = model(rgb, spd, path_points)
             loss = model.compute_loss(pred, preference)
             
             optimizer.zero_grad()
@@ -120,6 +131,8 @@ def train_reward_model(model, train_loader, val_loader,
             
             train_loss += loss.item()
             
+            pbar.set_postfix({'Loss': f'{loss.item():.4f}'})
+
         # 验证
         model.eval()
         val_loss = 0
@@ -127,12 +140,30 @@ def train_reward_model(model, train_loader, val_loader,
             for batch in val_loader:
                 rgb = batch['rgb'].to(device)
                 spd = batch['speed'].to(device)
+                path_points = batch['path_points'].to(device)
                 preference = batch['preference'].float().to(device)
                 
-                pred = model(rgb, spd)
+                pred = model(rgb, spd, path_points)
                 loss = model.compute_loss(pred, preference)
                 val_loss += loss.item()
-                
-        print(f'Epoch {epoch+1}/{num_epochs}')
-        print(f'Train Loss: {train_loss/len(train_loader):.4f}')
-        print(f'Val Loss: {val_loss/len(val_loader):.4f}') 
+        torch.save(model.state_dict(), f'./expirements/models/reward_model/reward_model_{epoch}.pth')
+
+    
+        # pbar = tqdm(total=num_epochs, desc=f'Epoch{epoch}', unit='epoch')
+        # pbar.update(epoch + 1)
+        # pbar.set_postfix({'Train Loss': f'{train_loss/len(train_loader):.4f}', 'Val Loss': f'{val_loss/len(val_loader):.4f}'})
+        # print(f'Epoch {epoch+1}/{num_epochs}')
+        # print(f'Train Loss: {train_loss/len(train_loader):.4f}')
+        # print(f'Val Loss: {val_loss/len(val_loader):.4f}') 
+
+        # 保存模型
+       
+
+if __name__ == '__main__':
+
+    dataset = './expirements/data/collected_data/train_test/'#prefer_data1245_yevyc
+    train_loader, val_loader = create_dataloader(dataset)
+
+    model = RewardModel()
+
+    train_reward_model(model, train_loader, val_loader)

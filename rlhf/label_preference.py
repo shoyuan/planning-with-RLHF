@@ -6,7 +6,8 @@ import torch
 import argparse
 from lbc.lbc import LBC
 from pathlib import Path
-from utils.visualization import visualize_birdview
+from utils.visualization import visualize_obs, visualize_birdview, visualize_birdview_big, visualize_big
+
 
 
 def draw_path_points(img, points, color=(0, 255, 0), thickness=2):
@@ -33,7 +34,7 @@ def draw_path_points(img, points, color=(0, 255, 0), thickness=2):
         x, y = points[-1]
         last_point = (int(x), int(y))
         cv2.circle(img, last_point, 3, color, -1)
-def visualize_frame(rgb, pred_loc, map_loc, control, speed, cmd, position, rotation, map_lbls, preference=None):
+def visualize_frame(rgb, pred_loc, map_loc, world_loc, control, speed, cmd, position, rotation, map_lbls, preference=None):
     """可视化单帧数据"""
     # 解码图像
     vis_img = cv2.imdecode(np.frombuffer(rgb, np.uint8), cv2.IMREAD_COLOR)
@@ -43,7 +44,19 @@ def visualize_frame(rgb, pred_loc, map_loc, control, speed, cmd, position, rotat
     
     # 绘制预测轨迹
     draw_path_points(vis_img, pred_loc, color=(0, 255, 0))
+    bev_loc = torch.flip(torch.from_numpy(world_loc), [-1])
+    bev_loc[...,1] *= -1
+    bev_loc += 32
+    print("pred loc: ", pred_loc)
+    print("world loc: ",map_loc)
+    print("rotation: ", rotation)
+    print("position: ", )
+    map_visualized = visualize_obs(rgb=vis_img, yaw=rotation[1], control=control, speed=speed[0], cmd=cmd[0], map=map_lbls, tgt=bev_loc)
     
+    #map_visualized = visualize_birdview(map_lbls, num_channels=12)
+
+
+
     # 添加文本信息
     text_color = (255, 255, 255)
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -74,11 +87,19 @@ def visualize_frame(rgb, pred_loc, map_loc, control, speed, cmd, position, rotat
         position = (10, (i + 1) * line_height)
         cv2.putText(vis_img, text, position, font, font_scale, text_color, thickness)
     
-    map_visualized = visualize_birdview(map_lbls)
-    print(map_loc)
     
     
-    draw_path_points(map_visualized, map_loc, color=(0, 255, 0))
+    #print(map_loc)
+    #bev_loc =  (pred_loc.view(-1,6,10,2)+1) * torch.tensor([96, 96]).float()/2
+
+    #draw_path_points(map_visualized, bev_loc, color=(0, 255, 0))
+    #print(bev_loc)
+    #(pred_rgb_locs.view(-1,self.num_cmds,self.T,2)+1) * self.rgb_model.img_size/2
+
+
+    
+    
+    #draw_path_points(map_visualized, map_loc, color=(0, 255, 0))
     
     # 拼接Map数据和RGB图像
     #concat_image = np.concatenate((vis_img, map_visualized), axis=1)
@@ -147,7 +168,7 @@ def visualize_lmdb_file(lmdb_path, output_dir=None, start_frame=0, end_frame=Non
                 continue
             
             # 可视化当前帧
-            vis_img = visualize_frame(encoded_image, pred_loc, map_loc, control, speed, cmd, position, rotation, map_lbls)
+            vis_img = visualize_frame(encoded_image, pred_loc, map_loc, world_loc, control, speed, cmd, position, rotation, map_lbls)
             if vis_img is None:
                 print(f"警告：帧 {i} 可视化失败")
                 continue
@@ -173,7 +194,7 @@ class PreferenceLabeler:
             raise FileNotFoundError(f"Data path does not exist: {data_path}")
         
         # Open LMDB environment
-        self.env = lmdb.open(data_path, readonly=False, lock=False)
+        self.env = lmdb.open(data_path, readonly=False, lock=False, map_size=1073741824)
         
         with self.env.begin() as txn:
             # Get database length
@@ -220,6 +241,7 @@ class PreferenceLabeler:
                 'rgb': rgb,
                 'pred_loc': pred_loc,
                 'map_loc': map_loc,
+                'world_loc': world_loc,
                 'control': control,
                 'speed': speed,
                 'cmd': cmd,
@@ -237,7 +259,7 @@ class PreferenceLabeler:
     
     def run(self):
         """Run labeling program"""
-        window_name = 'Trajectory Preference Labeling (1-5: Score, N: Next, P: Previous, ESC: Exit)'
+        window_name = 'Trajectory Preference Labeling (0-4: Score, N: Next, P: Previous, ESC: Exit)'
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         
         idx = self.current_idx
@@ -245,20 +267,22 @@ class PreferenceLabeler:
             frame_data = self.load_frame(idx)
             fig = visualize_frame(**frame_data)
             vis_img = fig[0]
+            
             map_img = fig[1]
             
             # Show operation hints
             cv2.putText(vis_img, 
-                       "1-5: Score  N: Next  P: Previous  ESC: Exit", 
+                       "0-4: Score  N: Next  P: Previous  ESC: Exit", 
                        (10, vis_img.shape[0] - 10),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             
+            # cv2.resizeWindow(window_name, 800, 600)
             cv2.imshow(window_name, vis_img)
             cv2.imshow("bev_view", map_img)
             
             while True:
                 key = cv2.waitKey(0) & 0xFF
-                if key in [ord('1'), ord('2'), ord('3'), ord('4'), ord('5')]:
+                if key in [ord('0'), ord('1'), ord('2'), ord('3'), ord('4')]:
                     preference = int(chr(key))
                     self.save_preference(idx, preference)
                     idx += 1

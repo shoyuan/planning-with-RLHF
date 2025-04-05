@@ -33,7 +33,7 @@ class LBC:
         self.rgb_model = RGBPointModel(
             'resnet34',
             pretrained=True,
-            height=240-self.crop_top-self.crop_bottom, width=480,
+            height=240-self.crop_top-self.crop_bottom, width=480,#h=224,w=480
             output_channel=self.T*self.num_cmds
         ).to(self.device)
         

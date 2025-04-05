@@ -3,8 +3,8 @@ import cv2
 import numpy as np
 
 
-PIXELS_PER_METER = 4
-PIXELS_AHEAD_VEHICLE = 80
+PIXELS_PER_METER = 1
+PIXELS_AHEAD_VEHICLE = 0 #80
 
 BACKGROUND = [238, 238, 236]
 
@@ -77,14 +77,15 @@ def visualize_obs(rgb, yaw, control, speed, cmd=None, red=None, lbl=None, tgt=No
         canvas = np.concatenate([canvas, cv2.resize(lbl, (H,H))], axis=1)
     
     if map is not None:
-        map = visualize_birdview_big(map, num_channels=3)
+        map = visualize_birdview_big(map, num_channels=12)
         H, W = canvas.shape[:2]
         if tgt is not None:
-            wx, wy = tgt
-            h, w = map.shape[:2]
-            px, py = int(w/2 + wx * PIXELS_PER_METER), int(h/2 + wy * PIXELS_PER_METER - PIXELS_AHEAD_VEHICLE)
-            # print (px, py)
-            cv2.circle(map, (px, py), 2, (0,0,0), -1)
+            for i in range(len(tgt)):
+                wx, wy = tgt[i]
+                h, w = map.shape[:2]
+                px, py = int(w/2 + wx * PIXELS_PER_METER), int(h/2 + wy * PIXELS_PER_METER - PIXELS_AHEAD_VEHICLE)
+                #print (px, py)
+                cv2.circle(map, (px, py), 2, (255,0,0), -1)
         canvas = np.concatenate([canvas, cv2.resize(map, (H,H))], axis=1)
 
         
@@ -96,13 +97,14 @@ def visualize_obs(rgb, yaw, control, speed, cmd=None, red=None, lbl=None, tgt=No
         lidar_viz = lidar_to_bev(lidar).astype(np.uint8)
         lidar_viz = cv2.cvtColor(lidar_viz,cv2.COLOR_GRAY2RGB)
         canvas = np.concatenate([canvas, cv2.resize(lidar_viz.astype(np.uint8), (canvas.shape[0], canvas.shape[0]))], axis=1)
-
+    
     cv2.putText(canvas, f'speed: {speed:.3f}m/s', (4, 10), *text_args)
     cv2.putText(
         canvas, 
         f'steer: {control[0]:.3f} throttle: {control[1]:.3f} brake: {control[2]:.3f}',
         (4, 20), *text_args
     )
+    
     if cmd is not None:
         cv2.putText(canvas, 'cmd: {}'.format({1:'left',2:'right',3:'straight',4:'follow',5:'change left',6:'change right'}.get(cmd)), (4, 30), *text_args)
     

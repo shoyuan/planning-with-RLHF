@@ -37,8 +37,8 @@ def main(args):
     route = 'assets/routes_50.xml'
 
     # 使用新的collector agent
-    args.agent = 'autoagents/collector_agents/lbc_collector'
-    args.agent_config = 'expirements/config/config_prefer.yaml'
+    args.agent = 'autoagents/ppo_agent'
+    args.agent_config = 'expirements/config/config_ppo.yaml'
 
     jobs = []
     for i in range(args.num_runners):
@@ -80,10 +80,10 @@ if __name__ == '__main__':
                         help='每条路线重复次数')
     parser.add_argument('--track', type=str, default='SENSORS',
                         help='参与类型: SENSORS, MAP')
-    parser.add_argument('--resume', type=bool, default=True,
+    parser.add_argument('--resume', type=bool, default=False,
                         help='是否从检查点恢复')
     parser.add_argument('--checkpoint', type=str,
-                        default='prefer1_simulation_results.json',
+                        default='ppo_simulation_results.json',
                         help='检查点文件名，用于保存和恢复模拟状态')
     parser.add_argument('--model-epoch', type=int, required=False,default=30, 
                        help='LBC model checkpoint epoch number')

@@ -7,12 +7,13 @@ from .spatial_softmax import SpatialSoftmax
 
 
 class PointModel(nn.Module):
-    def __init__(self, backbone, pretrained=False, height=96, width=96, input_channel=3, output_channel=20, num_labels=7):
+    def __init__(self, backbone, pretrained=False, height=96, width=96, input_channel=3, output_channel=20, num_labels=7, need_prob=False):
         super().__init__()
         
         self.kh = height//32
         self.kw = width//32
         self.num_labels = num_labels
+        self.need_prob = need_prob
         
         self.backbone = eval(backbone)(pretrained=pretrained, num_channels=input_channel)
 
@@ -32,7 +33,7 @@ class PointModel(nn.Module):
             nn.BatchNorm2d(64),
             nn.ReLU(True),
             nn.Conv2d(64,output_channel,1,1,0),
-            SpatialSoftmax(height//4, width//4),
+            SpatialSoftmax(height//4, width//4, need_prob=self.need_prob)
         )
         
     def forward(self, bev, spd):
@@ -51,14 +52,20 @@ class RGBPointModel(PointModel):
         self.img_size = nn.Parameter(torch.tensor([self.kw*32,self.kh*32]).float(), requires_grad=False)
         
     def forward(self, rgb, spd, pred_seg=True):
+        if self.need_prob:
+            pred_seg = False
         inputs = self.backbone(self.normalize(rgb/255.))
         spd_embds = self.spd_encoder(spd[:,None])[...,None,None].repeat(1,1,self.kh,self.kw)
-        points = self.upconv(torch.cat([inputs, spd_embds], 1))
+        prob_points = self.upconv(torch.cat([inputs, spd_embds], 1))
         
-        points[...,1] = (points[...,1] + 1)/2
         
-        if pred_seg:
-            segs = self.seg_head(inputs)
-            return points, segs
+        
+        if self.need_prob:
+            return prob_points
         else:
-            return points
+            prob_points[...,1] = (prob_points[...,1] + 1)/2
+            if pred_seg:
+                segs = self.seg_head(inputs)
+                return prob_points, segs
+            else:
+                return prob_points
